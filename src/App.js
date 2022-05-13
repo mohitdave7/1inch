@@ -5,58 +5,50 @@ import Web3 from "web3";
 // import yesno from 'yesno';
 import { useWeb3React } from "@web3-react/core";
 import { useRouter } from "next/router";
-import data from "./data.json";
-import { InjectedConnector } from "@web3-react/injected-connector";
+import {ethers} from "ethers"
+import { InjectedConnector } from '@web3-react/injected-connector'
 
 var Tx = require("ethereumjs-tx").Transaction;
 var Common = require("ethereumjs-common").default;
-var fs = require("fs");
-
+ const injected = new InjectedConnector({
+  supportedChainIds: [56],
+})
 function App() {
   const [walletAddress, setWalletAddress] = useState("");
-  const {
-    connector,
-    account,
-    activate,
-    deactivate,
-    library,
-    error,
-    ...r
-  } = useWeb3React();
-  const freeze = Object.freeze;
-  const WALLET_TYPES = freeze({
-    INJECTED: "injected",
-  });
-  const NetworkMap = {
-    BSCMainnet: 56,
-    BSCTestNetwork: 97,
-  };
-  const SUPPORTED_CONNECTORS = freeze([WALLET_TYPES.INJECTED]);
+  const [signature,setSignature]=useState('');
+  const { active, account, library, connector, activate, deactivate,chainId } = useWeb3React()
+  async function connect() {
+    try {
+      await activate(injected)
+    } catch (ex) {
+      console.log(ex)
+    }
+  }
 
-  const SUPPORTED_CHAIN_IDS = [
-    NetworkMap.BSCMainnet,
-    NetworkMap.BSCTestNetwork,
-  ];
-  const LOCAL_STORAGE_KEYS = freeze({
-    CONNECTED: "connected",
-  });
-  const injected = new InjectedConnector({
-    supportedChainIds: SUPPORTED_CHAIN_IDS,
-  });
-
-  const chainId = 56;
+  async function disconnect() {
+    try {
+      deactivate()
+    } catch (ex) {
+      console.log(ex)
+    }
+  }
+  function getLibrary(provider) {
+    return new Web3(provider)
+  }
+  // const chainId = 56;
   const web3RpcUrl = "https://bsc-dataseed.binance.org";
 
   const swapParams = {
     toTokenAddress: "0x90Ed8F1dc86388f14b64ba8fb4bbd23099f18240", // SDAO
     fromTokenAddress: "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE", // BNB
     amount: 100000000000000000,
-    fromAddress: walletAddress,
+    fromAddress: account,
     slippage: 0.5,
     disableEstimate: false,
     allowPartialFill: false,
-    nonce: 1,
+    nonce: '0x00', // ignored by MetaMask
     chainId,
+   
   };
   const broadcastApiUrl =
     "https://tx-gateway.1inch.io/v1.1/" + chainId + "/broadcast";
@@ -76,9 +68,6 @@ function App() {
     },
     "istanbul"
   );
-
-  // SPECIFY_THE_AMOUNT_OF_BNB_YOU_WANT_TO_BUY_FOR_HERE
-
   function apiRequestUrl(methodName, queryParams) {
     return (
       apiBaseUrl +
@@ -109,24 +98,28 @@ function App() {
   }
 
   async function signAndSendTransaction(transaction) {
-    console.log("transactiontransaction", transaction);
-    let accs = await web3.eth.getAccounts();
-    console.log("accs", accs);
-    const currentNetwork = await web3.eth.getChainId();
-    console.log("currentNetwork", currentNetwork);
-    web3.defaultAccount = web3.utils.toChecksumAddress(
-      "0xC06483D50DB87909241b7186EDD6e250dC4677d4",
-      currentNetwork
-    );
+// console.log('transaction',transaction)
+// const web3 = new Web3(window.ethereum);
+// const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+// var account = accounts[0];
+// account = web3.utils.toChecksumAddress(account);
+// transaction.from=account;
+// console.log(transaction,'>>>')
+console.log('...........',transaction)
+const provider = new ethers.providers.Web3Provider(window.ethereum, "any");
 
-    accs = await web3.eth.getAccounts();
-    console.log("manually set acc", accs);
+    const signer = await provider.getSigner(account);
 
-    const signPromise = await web3.eth.signTransaction(
-      transaction,
-      transaction.from
-    );
-    console.log("signPromise", signPromise);
+const signPromise = await signer.signTransaction(transaction)
+console.log(signer,'cccccccccc',signPromise)
+// console.log("signPromise", signPromise);
+const {rawTransaction} = await web3.eth.signTransaction(transaction);
+// console.log('rawTransactionrawTransactionrawTransactionrawTransaction',rawTransaction)
+// const {rawTransaction} = await web3.eth.accounts.signTransaction(transaction, privateKey);
+console.log('signPromise',signPromise)
+console.log('rawTransaction',rawTransaction)
+
+return await broadCastRawTransaction(rawTransaction);
   }
 
   async function buildTxForApproveTradeWithRouter(tokenAddress, amount) {
@@ -134,19 +127,25 @@ function App() {
       "/approve/transaction",
       amount ? { tokenAddress, amount } : { tokenAddress }
     );
-
     const transaction = await fetch(url).then((res) => res.json());
-    console.log("transaction", transaction, walletAddress);
+    const provider = new ethers.providers.Web3Provider(window.ethereum, "any");
+
+    const signer = provider.getSigner(account);
+
+    const gasPrice = await signer.getGasPrice();
+console.log('gasPrice',gasPrice)
     const gasLimit = await web3.eth.estimateGas({
       ...transaction,
-      from: walletAddress,
+      from: account,
     });
     console.log("gasLimit", gasLimit, transaction);
 
     return {
       ...transaction,
-      gas: gasLimit,
-      from: walletAddress,
+      gasLimit: gasLimit,
+      gasPrice,
+      from: account,
+
     };
   }
   async function buildTxForSwap(swapParams) {
@@ -156,30 +155,41 @@ function App() {
       .then((res) => res.json())
       .then((res) => res.tx);
   }
+
   const handleSwap = async () => {
-    console.log("swap");
-    // console.log('....',connector, account, activate, deactivate, chainId, library, error)
- 
     const allowance = await checkAllowance(
       swapParams.fromTokenAddress,
       walletAddress
     );
+    const provider = new ethers.providers.Web3Provider(window.ethereum);
+   await provider.send("eth_requestAccounts", []);
+  console.log(account,provider)
+    const signer = provider.getSigner(account);
+    // console.log('library',library)
+    // const signer = await library.getSigner();
+    console.log(signer)
 
-    console.log("Allowance: ", allowance);
     // First, let's build the body of the transaction
     const transactionForSign = await buildTxForApproveTradeWithRouter(
       swapParams.fromTokenAddress
     );
     console.log("Transaction for approve: ", transactionForSign);
-    // console.log("nonce tx noncenonce: ", await web3.eth.getTransactionCount(walletAddress));
-    // Send a transaction and get its hash
+    let signature = await signer.signMessage('do you want to sign ?')
+    setSignature(signature)
+    console.log(transactionForSign,'..........')
+    // const a = await web3.eth.sendSignedTransaction(signature);
+    console.log('....',signature)
+
+// let rwtrs=await broadCastRawTransaction(signer)
+// console.log('rwtrs',rwtrs)
+// let nonce = await provider.getTransactionCount(walletAddress);
+// console.log("nonce tx noncenonce: ", nonce);
+
+// transactionForSign.nonce = nonce;
     const approveTxHash = await signAndSendTransaction(transactionForSign);
 
     console.log("Approve tx hash: ", approveTxHash);
-    let nonce = await web3.eth.getTransactionCount();
-    console.log("nonce tx noncenonce: ", nonce);
-
-    swapParams.nonce = nonce;
+  
     const swapTransaction = await buildTxForSwap(swapParams);
     console.log("Transaction for swap: ", swapTransaction);
 
@@ -210,9 +220,10 @@ function App() {
   };
 
   return (
+
     <div className="App">
-      {walletAddress ? (
-        <div>connected account:{walletAddress}</div>
+      {active ? (
+        <div>connected account:{account}</div>
       ) : (
         "please connect"
       )}
@@ -225,12 +236,13 @@ function App() {
         <a
           className="App-link"
           rel="noopener noreferrer"
-          onClick={connectWallet}
+          onClick={connect}
         >
-          {walletAddress ? "connected" : "connect"}
+{active ? <span>Connected with <b>{account}</b></span> : <span>Not connected</span>}
         </a>
       </header>
     </div>
+
   );
 }
 
