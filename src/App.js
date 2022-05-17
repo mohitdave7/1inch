@@ -39,9 +39,9 @@ function App() {
   const web3RpcUrl = "https://bsc-dataseed.binance.org";
 
   const swapParams = {
-    toTokenAddress: "0x90Ed8F1dc86388f14b64ba8fb4bbd23099f18240", // SDAO
-    fromTokenAddress: "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE", // BNB
-    amount: 100000000000000000,
+    fromTokenAddress: "0x90Ed8F1dc86388f14b64ba8fb4bbd23099f18240", // SDAO
+    toTokenAddress: "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE", // BNB
+    amount: 10000000000000000000,
     fromAddress: account,
     slippage: 0.5,
     disableEstimate: false,
@@ -110,13 +110,13 @@ const provider = new ethers.providers.Web3Provider(window.ethereum, "any");
 
     const signer = await provider.getSigner(account);
 
-const signPromise = await signer.signTransaction(transaction)
-console.log(signer,'cccccccccc',signPromise)
+// const signPromise = await signer.signTransaction(transaction)
+// console.log(signer,'cccccccccc',signPromise)
 // console.log("signPromise", signPromise);
-const {rawTransaction} = await web3.eth.signTransaction(transaction);
+const rawTransaction = await signer.sendTransaction(transaction);
 // console.log('rawTransactionrawTransactionrawTransactionrawTransaction',rawTransaction)
 // const {rawTransaction} = await web3.eth.accounts.signTransaction(transaction, privateKey);
-console.log('signPromise',signPromise)
+// console.log('signPromise',signPromise)
 console.log('rawTransaction',rawTransaction)
 
 return await broadCastRawTransaction(rawTransaction);
@@ -171,7 +171,9 @@ console.log('gasPrice',gasPrice)
 
     // First, let's build the body of the transaction
     const transactionForSign = await buildTxForApproveTradeWithRouter(
-      swapParams.fromTokenAddress
+      swapParams.fromTokenAddress,
+      swapParams.amount
+
     );
     console.log("Transaction for approve: ", transactionForSign);
     let signature = await signer.signMessage('do you want to sign ?')
